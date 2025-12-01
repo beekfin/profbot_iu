@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.handlers import router 
+from app.admin import admin_router
+from app.student import student_router
 from app.logger import logger
 from app.database import db
 
@@ -18,10 +19,9 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-dp.include_router(router)
+dp.include_router(student_router)
+dp.include_router(admin_router)
 
-
-from app.database import db
 
 async def start_bot():
     logger.info("Подключение к базе данных...")

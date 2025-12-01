@@ -1,187 +1,14 @@
-from aiogram import Router, types, F
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.enums import ParseMode
-from aiogram.types import CallbackQuery
+"""Compatibility shim for separating student and admin handlers."""
 
-from os import getenv
-from dotenv import load_dotenv
-
-from app.database import db
-from app.states import ProfileForm
-from app.validators import validate_student_number, validate_bauman_login, validate_phone
-from app.keyboards import confirm_keyboard, main_menu_keyboard
-from app.schedule import schedule_convert
-from app.logger import logger
+from app.admin import admin_router
+from app.student import student_router
 
 
-load_dotenv()
-router = Router()
+router = student_router
+__all__ = ["student_router", "admin_router", "router"]
 
 
-# ─────────────────────────────────────────────
-# /start — приветствие + проверка профиля
-# ─────────────────────────────────────────────
-
-@router.message(Command("start"))
-async def start_handler(message: types.Message, state: FSMContext) -> None:
-	telegram_id = message.from_user.id
-
-	user = await db.fetchrow(
-		f"""
-		SELECT
-			id,
-			first_name,
-			last_name,
-			patronymic,
-			student_number,
-			group_name,
-			bauman_login,
-			role_id,
-			phone
-		FROM users
-		WHERE telegram_id = {int(telegram_id)}
-		"""
-	)
-
-	await message.answer(
-		"Привет! Выбери действие:",
-		parse_mode=ParseMode.HTML,
-		reply_markup=main_menu_keyboard(),
-	)
-
-
-	if user is None:
-		await message.answer(
-			"Похоже, ты ещё не зарегистрирован в системе.\n\n"
-			"Отправь одно сообщение со всеми данными в таком формате (по строчкам):\n\n"
-			"1) Фамилия\n"
-			"2) Имя\n"
-			"3) Отчество или '-' если нет\n"
-			"4) Группа (например: ИУ6-54Б)\n"
-			"5) Номер студенческого (например: 23У1101, 23УМ1101, 23УА045)\n"
-			"6) Бауманский логин (например: ivan_petrov или s123456)\n"
-			"7) Телефон (например: +7 999 123-45-67)\n\n"
-			"Просто скопируй шаблон и подставь свои данные."
-		)
-		await state.set_state(ProfileForm.data)
-		return
-
-	if (
-		user["first_name"] is None
-		or user["last_name"] is None
-		or user["group_name"] is None
-		or user["student_number"] is None
-		or user["bauman_login"] is None
-		or user["phone"] is None
-	):
-		await message.answer(
-			"У тебя есть незавершённый профиль.\n\n"
-			"Отправь одно сообщение со всеми данными в таком формате (по строчкам):\n\n"
-			"1) Фамилия\n"
-			"2) Имя\n"
-			"3) Отчество или '-' если нет\n"
-			"4) Группа (например: ИУ6-54Б)\n"
-			"5) Номер студенческого (например: 23У1101, 23УМ1101, 23УА045)\n"
-			"6) Бауманский логин (например: ivan_petrov или s123456)\n"
-			"7) Телефон (например: +7 999 123-45-67)\n\n"
-		)
-		await state.set_state(ProfileForm.data)
-		return
-
-
-	await message.answer(
-		"Ты уже зарегистрирован.\n"
-		"Посмотреть свои данные можно через кнопку «Профиль».\n"
-	)
-
-
-# Просмотр профиля по кнопке «Профиль»
-
-@router.message(F.text == "Профиль")
-async def profile_handler(message: types.Message) -> None:
-	telegram_id = message.from_user.id
-
-	try:
-		user = await db.fetchrow(
-			f"""
-			SELECT
-				first_name,
-				last_name,
-				patronymic,
-				group_name,
-				student_number,
-				bauman_login,
-				phone
-			FROM users
-			WHERE telegram_id = {int(telegram_id)}
-			"""
-		)
-
-		text = (
-			"📋 Твой профиль:\n\n"
-			f"Фамилия: {user['last_name']}\n"
-			f"Имя: {user['first_name']}\n"
-			f"Отчество: {user['patronymic'] or '—'}\n"
-			f"Группа: {user['group_name'] or 'не указана'}\n"
-			f"Студ. билет: {user['student_number'] or 'не указан'}\n"
-			f"Бауман логин: {user['bauman_login'] or 'не указан'}\n"
-			f"Телефон: {user['phone'] or 'не указан'}\n"
-		)
-
-		await message.answer(text)
-
-	except Exception as e:
-		logger.error(f"Ошибка при просмотре профиля: {e}")
-		await message.answer("Произошла ошибка при получении профиля.")
-
-
-# Ввод всех данных ОДНИМ сообщением
-
-@router.message(ProfileForm.data)
-async def collect_profile_data(message: types.Message, state: FSMContext) -> None:
-
-	lines = [line.strip() for line in message.text.splitlines() if line.strip()]
-
-	if len(lines) != 7:
-		await message.answer(
-			"❌ Неверное количество строк.\n\n"
-			"Нужно отправить ОДНО сообщение с 7 строками:\n"
-			"1) Фамилия\n"
-			"2) Имя\n"
-			"3) Отчество или '-'\n"
-			"4) Группа (ИУ6-54Б)\n"
-			"5) Номер студенческого (например: 23У1101, 23УМ1101, 23УА045)\n"
-			"6) Бауманский логин (например: ivan_petrov или s123456)\n"
-			"7) Телефон (например: +7 999 123-45-67)\n\n"
-		)
-		return
-
-	last_raw, first_raw, patronymic_raw, group_raw, stud_raw, login_raw, phone_raw = lines
-
-	last_name = last_raw.title()
-	first_name = first_raw.title()
-	patronymic = None if patronymic_raw == "-" else patronymic_raw.title()
-	group_name = group_raw.upper()
-	student_number = stud_raw.upper()
-	bauman_login = login_raw.strip()
-	phone = phone_raw.strip()
-
-	# Валидация студенческого
-	valid_stud, err_stud = validate_student_number(student_number)
-	if not valid_stud:
-		await message.answer(
-			f"❌ Ошибка в номере студенческого: {err_stud}\n\n"
-			"Примеры:\n"
-			"23У001\n"
-			"23У1101\n"
-			"23УМ1101\n"
-			"23УА045\n\n"
-			"Попробуй ещё раз, отправь 7 строк заново."
-		)
-		return
-
-	# Валидация бауманского логина
+_LEGACY_HANDLERS_SOURCE = """
 	valid_login, err_login = validate_bauman_login(bauman_login)
 	if not valid_login:
 		await message.answer(
@@ -418,3 +245,4 @@ async def send_map(message: types.Message):
 	except Exception as e:
 		logger.error(f"Ошибка отправки карты: {e}")
 		await message.answer("Ошибка при загрузке карты.")
+"""
