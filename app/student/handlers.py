@@ -8,10 +8,14 @@ from os import getenv
 from dotenv import load_dotenv
 
 from app.database import db
-from app.states import ProfileForm
-from app.validators import validate_student_number, validate_bauman_login, validate_phone
-from app.keyboards import confirm_keyboard, main_menu_keyboard
-from app.schedule import schedule_convert
+from app.student.states import ProfileForm
+from app.student.validators import (
+	validate_student_number,
+	validate_bauman_login,
+	validate_phone,
+)
+from app.student.keyboards import confirm_keyboard, main_menu_keyboard
+from app.student.schedule import schedule_convert
 from app.logger import logger
 
 

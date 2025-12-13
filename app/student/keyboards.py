@@ -21,7 +21,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [
             KeyboardButton(text="Статус заявления"),
             KeyboardButton(text="Статус профвзноса"),
-        ]
+        ],
     ]
 
     return ReplyKeyboardMarkup(

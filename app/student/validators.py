@@ -3,6 +3,7 @@ import re
 
 ALLOWED_FACULTIES = ["У", "УМ", "УА"]
 
+
 def validate_student_number(value: str) -> tuple[bool, str]:
     value = value.upper().strip()
 
@@ -39,23 +40,22 @@ def validate_bauman_login(value: str) -> tuple[bool, str]:
 
     return True, "OK"
 
+
 def validate_phone(phone: str) -> tuple[bool, str]:
-      
-	phone = phone.strip()
+    phone = phone.strip()
 
-	if not phone:
-		return False, "Телефон не может быть пустым."
+    if not phone:
+        return False, "Телефон не может быть пустым."
 
-	if not re.fullmatch(r"[0-9\+\-\s\(\)]{6,30}", phone):
-		return False, "Телефон должен содержать только цифры, '+', '-', пробелы и скобки."
+    if not re.fullmatch(r"[0-9\+\-\s\(\)]{6,30}", phone):
+        return False, "Телефон должен содержать только цифры, '+', '-', пробелы и скобки."
 
-	digits = re.sub(r"\D", "", phone)
+    digits = re.sub(r"\D", "", phone)
 
-	if len(digits) != 11:
-		return False, "Российский номер должен содержать ровно 11 цифр (пример: +7 999 123-45-67)."
+    if len(digits) != 11:
+        return False, "Российский номер должен содержать ровно 11 цифр (пример: +7 999 123-45-67)."
 
-	if digits[0] not in ("7", "8"):
-		return False, "Российский номер должен начинаться с '+7' или '8'."
+    if digits[0] not in ("7", "8"):
+        return False, "Российский номер должен начинаться с '+7' или '8'."
 
-	return True, ""
-
+    return True, ""

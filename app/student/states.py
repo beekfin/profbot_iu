@@ -1,7 +1,8 @@
 from aiogram.fsm.state import State, StatesGroup
 
+
 class ProfileForm(StatesGroup):
-    data = State()  
+    data = State()
     last_name = State()
     first_name = State()
     patronymic = State()
