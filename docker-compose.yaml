@@ -1,0 +1,39 @@
+services:
+  profbot:
+    container_name: profbot
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    networks:
+      - host
+    volumes:
+      - ${LOGS_DIR:-./logs}:/profbot/logs
+    depends_on:
+      prof-db:
+        condition: service_healthy
+
+  prof-db:
+    image: postgres:16.3-alpine3.20
+    container_name: prof-db
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+      timeout: 10s
+    networks:
+      - host
+    volumes:
+      - ${DB_VOLUME:-./volume}:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/init.sql
+
+networks:
+  host:
+    driver: bridge

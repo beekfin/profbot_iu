@@ -1,0 +1,19 @@
+[project]
+name = "profbot"
+version = "0.1.0"
+description = "Demo version of Profbot"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.19.0",
+    "black>=25.1.0",
+    "pydantic-settings>=2.8.1",
+    "google-api-python-client>=2.167.0",
+    "google-auth-httplib2>=0.2.0",
+    "python-dotenv>=1.1.0",
+    "asyncpg>=0.31.0",
+    "pillow>=11.0.0",
+    "pypdfium2>=4.30.0",
+    "python-docx>=1.2.0",
+    "pypdf>=6.4.2",
+]

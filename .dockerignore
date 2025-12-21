@@ -1,0 +1,12 @@
+.venv
+venv/
+venv.bak/
+.git
+.gitignore
+.dockerignore
+.venv
+.vscode
+__pycache__
+*.pyc
+README.md
+Makefile
