@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS applications (
     file_id TEXT,           -- ID файла в Telegram (для фото/документов)
     admin_reply TEXT,       -- Ответ администратора
     related_event_id INTEGER REFERENCES events(id) ON DELETE SET NULL, -- Ссылка на мероприятие (если это запись)
+    locked_by INTEGER REFERENCES users(id) ON DELETE SET NULL, -- Кем взято в работу (админ)
+    locked_at TIMESTAMP,    -- Когда взято в работу
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -381,23 +381,73 @@ async def _send_next_appeal(message: types.Message) -> None:
     except Exception:
         pass
 
+    telegram_id = message.from_user.id
+
+    # 1. Проверяем, есть ли уже взятое в работу обращение у этого админа
     row = await db.fetchrow("""
         SELECT a.id, a.description, a.created_at, u.first_name, u.last_name, u.group_name, a.file_id
         FROM applications a
         JOIN users u ON a.user_id = u.id
         JOIN application_types t ON a.type_id = t.id
         JOIN application_statuses s ON a.status_id = s.id
-        WHERE t.code = 'appeal' AND s.code = 'pending'
+        WHERE t.code = 'appeal' 
+          AND s.code = 'pending'
+          AND a.locked_by = (SELECT id FROM users WHERE telegram_id = $1)
         ORDER BY a.created_at ASC
         LIMIT 1
-    """)
+    """, telegram_id)
+
+    # 2. Если нет, пытаемся заблокировать следующее свободное
+    if not row:
+        # Используем UPDATE ... RETURNING для атомарной блокировки
+        # Блокируем, если locked_by IS NULL или блокировка устарела (> 15 минут)
+        row = await db.fetchrow("""
+            UPDATE applications
+            SET locked_by = (SELECT id FROM users WHERE telegram_id = $1),
+                locked_at = NOW()
+            WHERE id = (
+                SELECT id
+                FROM applications a
+                JOIN application_types t ON a.type_id = t.id
+                JOIN application_statuses s ON a.status_id = s.id
+                WHERE t.code = 'appeal' 
+                  AND s.code = 'pending'
+                  AND (a.locked_by IS NULL OR a.locked_at < NOW() - INTERVAL '15 minutes')
+                ORDER BY a.created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, description, created_at, file_id, user_id
+        """, telegram_id)
+        
+        if row:
+            # Если успешно заблокировали, подтягиваем данные пользователя (так как RETURNING не может вернуть данные из JOIN)
+            user_data = await db.fetchrow("""
+                SELECT first_name, last_name, group_name 
+                FROM users 
+                WHERE id = $1
+            """, row['user_id'])
+            # Объединяем словари
+            row = dict(row)
+            row.update(user_data)
+
+    # Получаем количество оставшихся обращений (свободных + моих)
+    pending_count = await db.fetchval("""
+        SELECT COUNT(*)
+        FROM applications a
+        JOIN application_types t ON a.type_id = t.id
+        JOIN application_statuses s ON a.status_id = s.id
+        WHERE t.code = 'appeal' 
+          AND s.code = 'pending'
+          AND (a.locked_by IS NULL OR a.locked_by = (SELECT id FROM users WHERE telegram_id = $1))
+    """, telegram_id)
 
     if not row:
         await message.answer("✅ Все обращения обработаны!")
         return
 
     text = (
-        f"📩 <b>Обращение #{row['id']}</b>\n"
+        f"📩 <b>Обращение #{row['id']}</b> (Осталось: {pending_count})\n"
         f"👤 {html.escape(row['last_name'])} {html.escape(row['first_name'])} ({html.escape(row['group_name'])})\n"
         f"📅 {row['created_at'].strftime('%d.%m %H:%M')}\n\n"
         f"{html.escape(row['description'])}"
@@ -495,9 +545,10 @@ async def check_applications_handler(message: types.Message) -> None:
 
 
 async def _send_next_application(message: types.Message) -> None:
-    # Получаем ожидающее заявление
-    row = await db.fetchrow(
-        """
+    telegram_id = message.from_user.id
+
+    # 1. Проверяем, есть ли уже взятое в работу заявление у этого админа
+    row = await db.fetchrow("""
         SELECT 
             a.id,
             a.subject,
@@ -512,18 +563,60 @@ async def _send_next_application(message: types.Message) -> None:
         JOIN users u ON a.user_id = u.id
         JOIN application_types t ON a.type_id = t.id
         JOIN application_statuses s ON a.status_id = s.id
-        WHERE t.code = 'document' AND s.code = 'pending'
+        WHERE t.code = 'document' 
+          AND s.code = 'pending'
+          AND a.locked_by = (SELECT id FROM users WHERE telegram_id = $1)
         ORDER BY a.created_at ASC
         LIMIT 1
-        """
-    )
+    """, telegram_id)
+
+    # 2. Если нет, пытаемся заблокировать следующее свободное
+    if not row:
+        row = await db.fetchrow("""
+            UPDATE applications
+            SET locked_by = (SELECT id FROM users WHERE telegram_id = $1),
+                locked_at = NOW()
+            WHERE id = (
+                SELECT id
+                FROM applications a
+                JOIN application_types t ON a.type_id = t.id
+                JOIN application_statuses s ON a.status_id = s.id
+                WHERE t.code = 'document' 
+                  AND s.code = 'pending'
+                  AND (a.locked_by IS NULL OR a.locked_at < NOW() - INTERVAL '15 minutes')
+                ORDER BY a.created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, subject, description, file_id, created_at, user_id
+        """, telegram_id)
+        
+        if row:
+            user_data = await db.fetchrow("""
+                SELECT first_name, last_name, group_name, student_number
+                FROM users 
+                WHERE id = $1
+            """, row['user_id'])
+            row = dict(row)
+            row.update(user_data)
+
+    # Получаем количество оставшихся заявлений
+    pending_count = await db.fetchval("""
+        SELECT COUNT(*)
+        FROM applications a
+        JOIN application_types t ON a.type_id = t.id
+        JOIN application_statuses s ON a.status_id = s.id
+        WHERE t.code = 'document' 
+          AND s.code = 'pending'
+          AND (a.locked_by IS NULL OR a.locked_by = (SELECT id FROM users WHERE telegram_id = $1))
+    """, telegram_id)
 
     if not row:
         await message.answer("✅ Все заявления проверены!")
         return
 
     text = (
-        f"📄 <b>Заявление #{row['id']}</b>\n"
+        f"📄 <b>Заявление #{row['id']}</b> (Осталось: {pending_count})\n"
         f"👤 {row['last_name']} {row['first_name']} ({row['group_name']})\n"
         f"🆔 {row['student_number']}\n"
         f"📅 {row['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
@@ -710,7 +803,7 @@ async def process_recipients(message: types.Message, state: FSMContext):
             if len(clean_phone) >= 10:
                 # Сравниваем последние 10 цифр для обработки +7 и 8
                 user = await db.fetchrow(
-                    "SELECT telegram_id, first_name, last_name FROM users WHERE RIGHT(regexp_replace(phone, '\D', '', 'g'), 10) = RIGHT($1, 10)",
+                    "SELECT telegram_id, first_name, last_name FROM users WHERE RIGHT(regexp_replace(phone, '\\D', '', 'g'), 10) = RIGHT($1, 10)",
                     clean_phone
                 )
 

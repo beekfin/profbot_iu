@@ -58,33 +58,53 @@ async def start_handler(message: types.Message, state: FSMContext) -> None:
 			username, telegram_id
 		)
 
+	if user:
+		await message.answer(
+			"Привет! Выбери действие:",
+			parse_mode=ParseMode.HTML,
+			reply_markup=main_menu_keyboard(),
+		)
+
+		if (
+			user["first_name"] is None
+			or user["last_name"] is None
+			or user["group_name"] is None
+			or user["student_number"] is None
+			or user["bauman_login"] is None
+			or user["phone"] is None
+		):
+			await _request_profile_filling(message)
+			await state.set_state(ProfileForm.data)
+		else:
+			await message.answer(
+				"Ты уже зарегистрирован.\n"
+				"Посмотреть свои данные можно через кнопку «Профиль».\n"
+			)
+		return
+
+	# Если пользователя нет - запрашиваем согласие
 	await message.answer(
-		"Привет! Выбери действие:",
+		"👋 Привет! Я бот Профсоюза студентов факультета ИУ.\n\n"
+		"Для работы мне понадобятся твои данные: ФИО, группа, номер студенческого и телефон.\n\n"
+		"📜 <b>Согласие на обработку персональных данных</b>\n"
+		"Нажимая кнопку «Согласен», вы даете согласие на обработку своих персональных данных "
+		"в соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ «О персональных данных» "
+		"для целей функционирования данного бота и деятельности Профсоюзной организации.",
 		parse_mode=ParseMode.HTML,
-		reply_markup=main_menu_keyboard(),
+		reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+			[types.InlineKeyboardButton(text="✅ Согласен", callback_data="consent_agree")]
+		])
 	)
 
-	if user is None:
-		await _request_profile_filling(message)
-		await state.set_state(ProfileForm.data)
-		return
 
-	if (
-		user["first_name"] is None
-		or user["last_name"] is None
-		or user["group_name"] is None
-		or user["student_number"] is None
-		or user["bauman_login"] is None
-		or user["phone"] is None
-	):
-		await _request_profile_filling(message)
-		await state.set_state(ProfileForm.data)
-		return
-
-	await message.answer(
-		"Ты уже зарегистрирован.\n"
-		"Посмотреть свои данные можно через кнопку «Профиль».\n"
-	)
+@router.callback_query(F.data == "consent_agree")
+async def consent_agree_handler(callback: CallbackQuery, state: FSMContext) -> None:
+	await callback.message.edit_reply_markup(reply_markup=None)
+	await callback.message.answer("✅ Согласие принято.")
+	
+	await _request_profile_filling(callback.message)
+	await state.set_state(ProfileForm.data)
+	await callback.answer()
 
 
 @router.message(F.text == "Профиль")
